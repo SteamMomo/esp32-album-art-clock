@@ -9,6 +9,10 @@ This repo is meant as a guide you can follow from an empty breadboard to a
 finished clock. You can also skip the guide and just download the code and
 flash it.
 
+| Now playing | Sky face | Miso the cat |
+| --- | --- | --- |
+| ![The clock showing a song's album art, title, artist and progress](docs/images/build-playing.jpg) | ![The finished clock on a perfboard showing the Sky face](docs/images/build-sky.jpg) | ![The clock showing the Miso the cat face](docs/images/build-cat.jpg) |
+
 ![All eight clock faces](docs/images/faces.png)
 
 *Every face, rendered on a PC from the real firmware code by the
@@ -54,13 +58,19 @@ of day; the buddies sleep at night.*
 
 ## Parts list
 
-| Part | Notes | Approx. cost |
-| --- | --- | --- |
-| ESP32 dev board (ESP32-WROOM-32, "ESP32 DevKit V1") | Any classic ESP32 with 4 MB flash. **Not** ESP32-S2/C3 without changes | $5 |
-| 2.8" ILI9341 SPI TFT, 320x240, **with XPT2046 touch** | The common red-PCB module with an SD slot | $8 |
-| DHT11 temperature/humidity module | The 3-pin module with a built-in resistor is easiest | $2 |
-| Breadboard + jumper wires (female-female if using header pins) | | $3 |
-| USB cable | Must be a data cable, not charge-only | |
+| Part | Notes | Approx. cost | Amazon (US) | Amazon (India) |
+| --- | --- | --- | --- | --- |
+| ESP32 dev board (ESP32-WROOM-32, 38-pin "DevKit") | Any classic ESP32 with 4 MB flash. **Not** ESP32-S2/S3/C3 without changes | $5 | [AITRIP 38-pin ESP32](https://www.amazon.com/AITRIP-ESP-WROOM-32-Development-Microcontroller-Integrated/dp/B09DPH1KXF) | [search](https://www.amazon.in/s?k=ESP32+ESP-WROOM-32+38+pin+development+board) |
+| 2.8" ILI9341 SPI TFT, 320x240, **with touch** | The red-PCB module with an SD slot, touch pins (T_CLK, T_CS…) and a stylus. These use the XPT2046 touch chip | $10 | [DIANN 2.8" ILI9341 touch](https://www.amazon.com/DIANN-ILI9341-Display-320x240-Screen/dp/B0BNQBKFCT) | [search](https://www.amazon.in/s?k=2.8+inch+ILI9341+SPI+TFT+touch+module) |
+| DHT11 temperature/humidity module | The 3-pin module (VCC, DATA, GND) with a built-in pull-up resistor | $2 | [HUABAN DHT11 module (3-pack)](https://www.amazon.com/Digital-Temperature-Relative-Humidity-Arduino/dp/B07868Z9LX) | [search](https://www.amazon.in/s?k=DHT11+temperature+humidity+sensor+module) |
+| Female-female jumper wires, 20 cm | 16 wires connect everything | $5 | [Chanzon 40pcs female-female](https://www.amazon.com/Chanzon-Female-Header-Jumper-Dupont/dp/B09FPL7ZGM) | [search](https://www.amazon.in/s?k=female+to+female+jumper+wires+20cm) |
+| Perfboard (optional) | Something to mount it all on, like the board in the photos | $3 | [search](https://www.amazon.com/s?k=perfboard+pcb+prototype+board) | [search](https://www.amazon.in/s?k=perfboard+pcb+prototype+board) |
+| USB cable | Must be a data cable, not charge-only. Match your board's port (micro-USB or USB-C) | | | |
+
+Listings change, so before buying check that the display says **ILI9341**,
+**SPI** and **touch**, and that the ESP32 is a plain **ESP32-WROOM-32**. A
+"CYD" (ESP32-2432S028R) board with the screen built in is a different project
+and needs different pins.
 
 You'll also need a Spotify account (free accounts work for the
 "currently playing" API in most regions) and a **2.4 GHz** Wi-Fi network,

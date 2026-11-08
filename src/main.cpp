@@ -1308,8 +1308,9 @@ void drawRobotCharacter(uint32_t now, bool asleep) {
     const int hx = cx + 30;
     const int hyHeart = hy - 30 - static_cast<int>(rise * 18.0f);
     const uint16_t heartBg = backdropAt(BUDDY_Y + hyHeart);
+    const float fade = rise < 0.6f ? 1.0f : 1.0f - (rise - 0.6f) / 0.4f;
     const uint16_t heart = blendColor(rgb565(255, 96, 128), heartBg,
-                                      static_cast<uint8_t>((1.0f - rise) * 255));
+                                      static_cast<uint8_t>(fade * 255));
     faceSprite.fillSmoothCircle(hx - 3, hyHeart, 3, heart, heartBg);
     faceSprite.fillSmoothCircle(hx + 3, hyHeart, 3, heart, heartBg);
     faceSprite.fillTriangle(hx - 6, hyHeart + 1, hx + 6, hyHeart + 1, hx,
@@ -1649,6 +1650,21 @@ inline uint32_t skyHash(int x, int y, int z = 0) {
   return h ^ (h >> 16);
 }
 
+// Smooth value noise (0-255): bilinear between hashed grid corners.
+inline int skyNoise(int x, int y, int cell, int seed) {
+  const int gx = x / cell;
+  const int gy = y / cell;
+  const int fx = x % cell;
+  const int fy = y % cell;
+  const int a = skyHash(gx, gy, seed) & 255;
+  const int b = skyHash(gx + 1, gy, seed) & 255;
+  const int c = skyHash(gx, gy + 1, seed) & 255;
+  const int d = skyHash(gx + 1, gy + 1, seed) & 255;
+  const int top = a + (b - a) * fx / cell;
+  const int bottom = c + (d - c) * fx / cell;
+  return top + (bottom - top) * fy / cell;
+}
+
 inline void skyLerpTo(int& r, int& g, int& b, const SkyRgb& c, int a) {
   r += ((c.r - r) * a) >> 8;
   g += ((c.g - g) * a) >> 8;
@@ -1674,7 +1690,6 @@ bool skyInTextBox(int x, int y) {
 
 void skySpawnCloud(SkyCloud& cloud, bool anywhere) {
   cloud.count = static_cast<uint8_t>(random(4, 7));
-  cloud.w = static_cast<int16_t>(random(40, 74));
   int maxR = 0;
   for (int i = 0; i < cloud.count; ++i) {
     const bool middle = i > 0 && i < cloud.count - 1;
@@ -1685,13 +1700,18 @@ void skySpawnCloud(SkyCloud& cloud, bool anywhere) {
     maxR = max(maxR, r);
   }
   cloud.h = static_cast<int16_t>(maxR * 2 - 1);
+  // Puffs overlap so the cloud reads as one shape.
+  int x = cloud.pr[0];
   for (int i = 0; i < cloud.count; ++i) {
     const int r = cloud.pr[i];
-    cloud.px[i] = static_cast<int8_t>(
-        r + i * (cloud.w - 2 * r) / max(1, cloud.count - 1));
+    if (i > 0) {
+      x += (cloud.pr[i - 1] + r) * 11 / 20;
+    }
+    cloud.px[i] = static_cast<int8_t>(x);
     cloud.py[i] = static_cast<int8_t>(cloud.h - r + 2 -
                                       static_cast<int>(random(0, 3)));
   }
+  cloud.w = static_cast<int16_t>(x + cloud.pr[cloud.count - 1] + 1);
   cloud.y = static_cast<int16_t>(
       random(SKY_BAND_Y0 + 2, SKY_BAND_Y1 - cloud.h - 1));
   cloud.speed = random(25, 75) / 10.0f;
@@ -1824,7 +1844,7 @@ void skyPrepare(const struct tm& localTime, const struct timeval& now,
       : (hour >= 18.5f ? hour - 18.5f : hour + 5.5f) / 11.5f;
   const float altitude = sinf(PI * progress);
   skyBodyX = 160 - static_cast<int>(cosf(PI * progress) * 150.0f);
-  skyBodyY = 158 - static_cast<int>(altitude * 114.0f);
+  skyBodyY = 164 - static_cast<int>(altitude * 104.0f);
 
   if (synced) {
     const double days = (now.tv_sec - 947182440.0) / 86400.0;
@@ -1919,8 +1939,7 @@ void skySkyPixel(int x, int y, int& r, int& g, int& b) {
     const int dist = abs(y - lineY);
     if (dist < 26) {
       const int base = (26 - dist) * (26 - dist) * 256 / 676;
-      const int noise = ((skyHash(x >> 2, y >> 2, 7) & 255) +
-                         (skyHash(x >> 3, y >> 3, 9) & 255)) >> 1;
+      const int noise = (skyNoise(x, y, 18, 7) * 2 + skyNoise(x, y, 7, 9)) / 3;
       const int amount = static_cast<int>(base * noise / 256 * skyNight * 0.32f);
       skyLerpTo(r, g, b, {176, 176, 222}, amount);
     }
@@ -1979,11 +1998,12 @@ void skySkyPixel(int x, int y, int& r, int& g, int& b) {
   }
 }
 
+// Lights a slope by how steeply it faces the sun or moon. A wide sample
+// keeps neighbouring columns from flickering between lit and shaded.
 inline int skySlopeLight(const uint8_t* table, int x, int amount) {
-  const int slope = table[min(x + 1, SCREEN_W - 1)] - table[max(x - 1, 0)];
-  const bool facesRight = slope > 0;
-  const bool lightRight = skyBodyX > x;
-  return facesRight == lightRight || slope == 0 ? amount : -amount * 3 / 4;
+  const int slope = table[min(x + 4, SCREEN_W - 1)] - table[max(x - 4, 0)];
+  const int toward = skyBodyX > x ? 1 : -1;  // >0 slope faces right
+  return constrain(slope * toward * amount / 8, -amount * 3 / 4, amount);
 }
 
 void skyFarPixel(int x, int y, int& r, int& g, int& b) {
@@ -2219,6 +2239,10 @@ void skyDrawCloud(const SkyCloud& cloud) {
     for (int x = x0; x < x1; ++x) {
       const float lx = x - ox - fracX + 0.5f;
       float cover = 0.0f;
+      const int last = cloud.count - 1;
+      if (ly >= cloud.h - 5 && lx >= cloud.px[0] && lx <= cloud.px[last]) {
+        cover = 1.0f;  // flat base joining the puffs
+      }
       for (int i = 0; i < cloud.count && cover < 1.0f; ++i) {
         const float dx = lx - cloud.px[i];
         const float dy = ly - cloud.py[i];
@@ -3307,6 +3331,11 @@ void lpOctagon(int cx, int cy, int radius, uint16_t a, uint16_t b) {
 void lpDrawBody() {
   const uint16_t sky = sky565(skyRows[constrain(skyBodyY, 0, SKY_LAKE_TOP - 1)]);
   const uint16_t glow = sky565(skyGlowColor);
+  if (!skySunUp && skyMoonLight < 0.08f) {
+    lpOctagon(skyBodyX, skyBodyY, 11, blendColor(TEXT_COLOR, sky, 40),
+              blendColor(TEXT_COLOR, sky, 30));
+    return;
+  }
   lpOctagon(skyBodyX, skyBodyY, 26, blendColor(glow, sky, 46),
             blendColor(glow, sky, 38));
   lpOctagon(skyBodyX, skyBodyY, 19, blendColor(glow, sky, 92),
@@ -3314,6 +3343,10 @@ void lpDrawBody() {
   if (skySunUp) {
     lpOctagon(skyBodyX, skyBodyY, 12, rgb565(255, 226, 130),
               rgb565(255, 196, 96));
+  } else if (skyMoonLight < 0.08f) {
+    // New moon: just a faint dark disc.
+    lpOctagon(skyBodyX, skyBodyY, 11, blendColor(TEXT_COLOR, sky, 40),
+              blendColor(TEXT_COLOR, sky, 30));
   } else {
     lpOctagon(skyBodyX, skyBodyY, 11, rgb565(240, 238, 224),
               rgb565(212, 210, 198));
@@ -3783,7 +3816,7 @@ uint16_t pxSkyCell(int cx, int cy) {
       c = skyMix(c, skyGlowColor, 0.45f);
     }
   } else {
-    if (d2 <= 8) {
+    if (d2 <= 8 && skyMoonLight >= 0.08f) {
       const int dir = skyMoonPhase < 0.5f ? -1 : 1;
       const int shift = static_cast<int>(6.0f * (1.0f - skyMoonLight)) + 1;
       const int sx = cx - (bx + dir * shift);
@@ -3791,7 +3824,7 @@ uint16_t pxSkyCell(int cx, int cy) {
         return rgb565(240, 236, 210);
       }
     }
-    if (d2 <= 20 && ((cx + cy) & 1)) {
+    if (d2 <= 20 && ((cx + cy) & 1) && skyMoonLight >= 0.08f) {
       c = skyMix(c, {120, 130, 180}, 0.3f);
     }
   }
@@ -3820,7 +3853,7 @@ uint16_t pxCellColor(int cx, int cy) {
   // Street lamps stand in front of the buildings.
   const int lampX = ((cx + 4) / 20) * 20 + 6;
   if (cx == lampX && cy >= 44 && cy < PX_SIDEWALK) {
-    return sky565(skyMix({26, 26, 36}, {60, 62, 74}, day));
+    return sky565(skyMix({70, 72, 92}, {60, 62, 74}, day));
   }
   if ((cx == lampX || cx == lampX + 1) && cy == 43) {
     return night ? rgb565(255, 226, 140) : rgb565(150, 156, 170);
@@ -3884,10 +3917,11 @@ uint16_t pxCellColor(int cx, int cy) {
     }
     c = skyMix({30, 30, 40}, {80, 84, 96}, day);  // antenna
   } else if (cy >= pxFarTop[cx]) {
-    c = skyMix({18, 18, 40}, {110, 126, 168}, day);
-    c = skyMix(c, cHaze, 0.25f);
-    if (night && skyHash(cx, cy, 33) % 9 == 0) {
-      c = {170, 150, 90};
+    c = skyMix({40, 38, 78}, {110, 126, 168}, day);
+    c = skyMix(c, cHaze, 0.2f);
+    if (night && (cx & 1) == 0 && cy % 3 == 1 &&
+        skyHash(cx, cy, 33) % 10 == 0) {
+      c = {150, 130, 80};  // a few distant lit windows
     }
   } else {
     return pxSkyCell(cx, cy);
@@ -3895,8 +3929,8 @@ uint16_t pxCellColor(int cx, int cy) {
   if (night) {
     const int dx = cx - lampX;
     const int dy = cy - 43;
-    if (dx * dx + dy * dy <= 20 && (dx * dx + dy * dy <= 6 || ((cx + cy) & 1))) {
-      c = skyMix(c, {255, 200, 110}, 0.35f);
+    if (dx * dx + dy * dy <= 5) {
+      c = skyMix(c, {255, 200, 110}, 0.3f);
     }
   }
   return sky565(c);
@@ -4080,11 +4114,18 @@ void pxDrawObjects() {
   }
   compact[n] = '\0';
   pxDrawText(compact, 3, 15, 1, rgb565(255, 214, 120), shadow);
+  // Climate in a little game-style HUD box.
   const int tempWidth = pxTextCells(pxClimateTemp, 1);
-  pxDrawText(pxClimateTemp, PX_W - 3 - tempWidth, 3, 1, TEXT_COLOR, shadow);
   const int humWidth = pxTextCells(pxClimateHum, 1);
-  pxDrawText(pxClimateHum, PX_W - 3 - humWidth, 9, 1, rgb565(140, 200, 255),
-             shadow);
+  const int boxX = PX_W - 6 - max(tempWidth, humWidth);
+  if (skyHits(boxX * PX, PX, SCREEN_W, 16 * PX)) {
+    const uint16_t panel = rgb565(18, 20, 38);
+    pxFill(boxX, 1, PX_W - 1 - boxX, 15, rgb565(96, 108, 150));
+    pxFill(boxX + 1, 2, PX_W - 3 - boxX, 13, panel);
+    pxDrawText(pxClimateTemp, PX_W - 3 - tempWidth, 3, 1, TEXT_COLOR, panel);
+    pxDrawText(pxClimateHum, PX_W - 3 - humWidth, 9, 1, rgb565(140, 200, 255),
+               panel);
+  }
   stripDrawDots(rgb565(40, 40, 50));
 }
 
@@ -4194,7 +4235,7 @@ void updatePixelFace(uint32_t nowMs) {
   if (faceRenderedClimate != climate) {
     faceRenderedClimate = climate;
     pxUpdateClimateText();
-    skyRender(PX_W * PX / 2, 0, SCREEN_W, 14 * PX);
+    skyRender(PX_W * PX / 2, 0, SCREEN_W, 17 * PX);
   }
   const int second = now.tv_sec & 1;
   if (second != pxShownSecond) {

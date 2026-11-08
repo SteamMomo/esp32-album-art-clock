@@ -9,8 +9,11 @@ This repo is meant as a guide you can follow from an empty breadboard to a
 finished clock. You can also skip the guide and just download the code and
 flash it.
 
-> **Add your photos!** Put pictures of your build in `docs/images/` and link
-> them here. People love seeing the real thing.
+![All eight clock faces](docs/images/faces.png)
+
+*Every face, rendered on a PC from the real firmware code by the
+[simulator](#preview-faces-on-your-pc). Sky, Low Poly and Pixel follow the time
+of day; the buddies sleep at night.*
 
 ---
 
@@ -232,6 +235,23 @@ In short:
   - That means 10 KB of RAM instead of the 150 KB a full framebuffer would
     take.
   - Only the parts that move are redrawn each frame.
+
+## Preview faces on your PC
+
+The `sim/` folder contains a small simulator. It compiles the real firmware and
+the real TFT_eSPI library for your computer, swaps the display for a
+virtual ILI9341, and renders every face to PNG at different times of day. It's
+handy for designing faces without flashing the board each time.
+
+```bash
+pio run            # once, so PlatformIO downloads the libraries
+bash sim/build.sh  # renders to sim/renders/, plus contact-sheet.png
+```
+
+You need a desktop C++ compiler: MinGW-w64 on Windows, Xcode command-line
+tools on macOS, or `g++` on Linux. Pass a number to change the zoom, for
+example `bash sim/build.sh 3`. Edit the shot list in `sim/render_faces.cpp` to
+pick different faces or times.
 
 ## Make your own clock face
 

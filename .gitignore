@@ -12,3 +12,7 @@ src/secrets.h
 .vscode/launch.json
 .vscode/ipch
 __pycache__/
+
+# Simulator output
+sim/build/
+sim/renders/
